@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+midscene/node_modules/
+midscene/.env
+data/midscene-runs/
+data/runs/
+data/tasks.json
+*.zip
