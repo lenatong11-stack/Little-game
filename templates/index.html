@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Android 游戏自动化实操</title>
+<style>
+:root{font-family:Segoe UI,"Microsoft YaHei",sans-serif;color:#182230;background:#f3f6fa}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1120px;margin:28px auto;padding:0 18px}.head{display:flex;align-items:center;justify-content:space-between}.head h1{font-size:26px;margin:0}.sub{color:#617084;margin:8px 0 22px}.grid{display:grid;grid-template-columns:360px 1fr;gap:18px}.card{background:white;border:1px solid #e2e8f0;border-radius:12px;padding:18px;box-shadow:0 3px 12px #16263a0a}.card h2{font-size:17px;margin:0 0 14px}.label{display:block;font-size:13px;font-weight:600;margin:12px 0 6px}input,select,textarea{width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:10px;font:inherit;background:#fff}textarea{min-height:74px;resize:vertical}.row{display:flex;gap:8px}.row>*{flex:1}button{background:#1769e0;border:0;color:white;padding:10px 14px;border-radius:7px;font:inherit;font-weight:600;cursor:pointer}button.secondary{background:#e8eff9;color:#164990}button:disabled{opacity:.5;cursor:wait}.device{background:#f7fafc;border-radius:8px;padding:11px;margin:8px 0;font-size:13px}.ok{color:#087443}.bad{color:#b42318}.hint{font-size:12px;color:#667085;line-height:1.5}.tasks{display:grid;gap:12px}.task{border:1px solid #e2e8f0;border-radius:9px;padding:13px}.tasktop{display:flex;justify-content:space-between;align-items:center;gap:8px}.pill{font-size:12px;padding:4px 8px;border-radius:99px;background:#eef2f7}.pill.success{background:#e5f7ed;color:#087443}.pill.failed{background:#fff0ed;color:#a12613}.log{background:#111827;color:#d1e5ff;border-radius:7px;padding:10px;font:12px Consolas,monospace;max-height:165px;overflow:auto;white-space:pre-wrap;margin-top:10px}.shots{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.shots img{width:210px;max-width:48%;border:1px solid #cbd5e1;border-radius:6px}.small{font-size:12px;color:#667085;margin-top:7px}.banner{margin:12px 0;padding:10px;background:#fff8e8;border:1px solid #f4d28a;border-radius:8px;font-size:13px;line-height:1.5}@media(max-width:800px){.grid{grid-template-columns:1fr}}
+</style></head><body><main class="wrap">
+<div class="head"><h1>Android 游戏自动化实操</h1><button class="secondary" onclick="loadDevices()">刷新设备</button></div>
+<p class="sub">ADB 设备识别 · 可复现任务 · 逐步日志 · 截图结果</p>
+<div class="grid"><section class="card"><h2>设备</h2><div id="devices">正在查询…</div>
+<h2 style="margin-top:22px">新建测试任务</h2>
+<label class="label" for="name">任务名称</label><input id="name" placeholder="给本次测试取个名字">
+<label class="label">目标应用包名</label><input id="package" value="com.tencent.tmgp.sgame">
+<label class="label">执行设备</label><select id="serial"><option value="">自动选择首台已授权设备</option></select>
+<label class="label" for="goal" id="goal-label">自然语言测试步骤</label>
+<textarea id="goal" rows="7" placeholder="用自然语言描述要执行的操作。可写一段话，也可每行写一个步骤。"></textarea>
+<label class="label" for="assertion">附加验收条件（可选）</label><textarea id="assertion"></textarea>
+<p class="hint">每个阶段完成后保存截图。遇到登录授权、验证码或识别失败时停止，可从日志查看失败阶段和现场截图。</p>
+<div class="row"><button onclick="createTask(this)">创建并运行视觉任务</button><button class="secondary" onclick="createTask(this, true)">创建失败演示</button></div>
+<p class="hint">失败演示验证错误记录，无需操作手机。</p></section>
+<section class="card"><h2>任务与执行结果</h2><div id="tasks" class="tasks">暂无任务</div></section></div>
+</main><script>
+let deviceList=[];
+async function loadDevices(){let box=document.querySelector('#devices');box.textContent='正在查询…';try{let r=await fetch('/api/devices'),d=await r.json();deviceList=d.devices||[];box.innerHTML='';let sel=document.querySelector('#serial');sel.innerHTML='<option value="">自动选择首台已授权设备</option>';if(!deviceList.length)box.innerHTML='<div class="device bad">没有发现设备，请检查 USB 调试和授权。</div>';for(const x of deviceList){let el=document.createElement('div');el.className='device';el.innerHTML='<b>'+x.serial+'</b> · <span class="'+(x.state==='device'?'ok':'bad')+'">'+x.state+'</span><br>'+((x.resolution&&x.resolution.raw)||x.details||'');box.appendChild(el);if(x.state==='device'){let o=document.createElement('option');o.value=x.serial;o.textContent=x.serial;sel.appendChild(o)}}if(!d.ok)box.innerHTML='<div class="device bad">'+d.error+'</div>'}catch(e){box.innerHTML='<div class="device bad">无法连接本地服务：'+e+'</div>'}}
+async function createTask(button, fail = false) {
+  const value = id => document.getElementById(id).value.trim();
+  const body = {
+    name: fail ? '失败案例：无效步骤验证' : value('name'),
+    package: value('package'),
+    serial: value('serial'),
+    steps: fail ? [{type: 'invalid_action', label: '触发受控失败'}] : [
+      {type: 'vision', goal: value('goal'), assertion: value('assertion')}
+    ],
+  };
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/tasks', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+    });
+    const task = await response.json();
+    if (!response.ok) throw new Error(task.error || '创建失败');
+    const started = await fetch('/api/tasks/' + task.id + '/run', {method: 'POST'});
+    if (!started.ok) throw new Error((await started.json()).error || '启动失败');
+    await refreshTasks();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+const statusNames = {success: '成功', failed: '失败', running: '执行中', queued: '待运行'};
+const stepName = step => step === 0 ? '启动目标应用' : (step ?? '无');
+const logLine = entry => entry.time + ' [' + entry.level + '] ' + entry.message;
+
+function logText(task) {
+  return [
+    '任务：' + task.name,
+    '任务 ID：' + task.id,
+    '运行 ID：' + (task.run_id || '无'),
+    '应用包名：' + task.package,
+    '状态：' + (statusNames[task.status] || '待运行'),
+    '开始：' + (task.started_at || '未开始'),
+    '结束：' + (task.finished_at || '未结束'),
+    '失败步骤：' + stepName(task.failure_step),
+    '错误：' + (task.error || '无'),
+    '结果：' + (task.result || '无'),
+    '', '执行日志：', ...(task.logs || []).map(logLine),
+    '', '截图路径（相对于项目目录）：', ...(task.screenshots || []).map(shot => shot.path),
+  ].join('\r\n');
+}
+
+async function copyLogs(task) {
+  try {
+    await navigator.clipboard.writeText(logText(task));
+    alert('任务日志已复制');
+  } catch {
+    exportLogs(task);
+    alert('浏览器无法访问剪贴板，已改为下载日志文件。');
+  }
+}
+
+function exportLogs(task) {
+  const file = new Blob(['\uFEFF', logText(task)], {type: 'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '测试日志-' + (task.run_id || task.id) + '.txt';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function append(parent, tag, content, className) {
+  const element = document.createElement(tag);
+  element.textContent = content;
+  if (className) element.className = className;
+  parent.appendChild(element);
+  return element;
+}
+
+async function refreshTasks() {
+  const response = await fetch('/api/tasks');
+  const items = await response.json();
+  const root = document.querySelector('#tasks');
+  root.textContent = items.length ? '' : '暂无任务';
+  for (const task of items) {
+    const card = append(root, 'article', '', 'task');
+    const header = append(card, 'div', '', 'tasktop');
+    append(header, 'strong', task.name);
+    append(header, 'span', statusNames[task.status] || '待运行', 'pill ' + task.status);
+    append(card, 'div', '包名：' + task.package + ' · ' + (task.started_at || task.created_at || ''), 'small');
+    if (task.error) append(card, 'p', '失败步骤 ' + stepName(task.failure_step) + '：' + task.error, 'bad');
+    if (task.result) append(card, 'p', task.result);
+    const logActions = append(card, 'div', '', 'tasktop');
+    logActions.style.cssText = 'justify-content:flex-start;flex-wrap:wrap;margin-top:12px';
+    append(logActions, 'strong', '执行日志');
+    append(logActions, 'button', '一键复制', 'secondary').onclick = () => copyLogs(task);
+    append(logActions, 'button', '导出日志', 'secondary').onclick = () => exportLogs(task);
+    append(card, 'div', (task.logs || []).map(logLine).join('\n') || '等待执行…', 'log');
+    const shots = append(card, 'div', '', 'shots');
+    for (const shot of task.screenshots || []) {
+      const item = append(shots, 'div', '');
+      const link = append(item, 'a', '');
+      link.href = '/' + shot.path;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      const image = append(link, 'img', '');
+      image.src = link.href;
+      image.alt = shot.label;
+      append(item, 'div', shot.label, 'small');
+    }
+  }
+}
+loadDevices();refreshTasks();setInterval(refreshTasks,3000);
+</script></body></html>

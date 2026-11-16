@@ -1,0 +1,8 @@
+{
+  "name": "android-game-visual-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"run": "node visual_agent.mjs"},
+  "dependencies": {"@midscene/android": "^1.0.0", "dotenv": "^16.4.7"}
+}

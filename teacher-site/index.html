@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Android 自动化测试记录</title>
+<style>
+:root{font-family:"Microsoft YaHei",Segoe UI,sans-serif;color:#17253a;background:#f4f7fb}*{box-sizing:border-box}body{margin:0}.page{max-width:980px;margin:32px auto;padding:0 18px}.top{display:flex;justify-content:space-between;align-items:center;gap:10px}.top h1{font-size:26px;margin:0}button{border:0;background:#1d63ce;color:white;border-radius:7px;padding:10px 15px;font:inherit;cursor:pointer}.card{background:white;border:1px solid #dce5f0;border-radius:12px;padding:20px;margin-top:16px}.meta{display:flex;gap:9px;flex-wrap:wrap;color:#64748b;font-size:13px;margin-top:7px}.badge{font-size:12px;border-radius:99px;padding:4px 9px;font-weight:700}.fail{background:#fff0ed;color:#a33b31}.pass{background:#e5f6ed;color:#16754e}.log{margin-top:15px;background:#111c2d;color:#dce9fa;border-radius:8px;padding:14px;font:13px/1.6 Consolas,monospace;white-space:pre-wrap;overflow:auto}.evidence{max-width:100%;max-height:430px;object-fit:contain;border:1px solid #dce5f0;border-radius:8px;background:#111;margin-top:12px}.muted{color:#64748b;font-size:13px;line-height:1.6}.reason{border-left:4px solid #e0a13a;background:#fff8e9;padding:12px 15px;margin-top:14px}.footer{font-size:12px;color:#74839a;margin:18px 2px}@media print{body{background:white}.page{margin:0}}
+</style></head><body><main class="page">
+<header class="top"><div><h1>Android 自动化测试记录</h1><div class="meta"><span>游戏：王者荣耀</span><span>测试：主菜单声音图标识别</span><span>视觉模型：DeepSeek Flash</span></div></div><button onclick="copyLog()">复制失败日志</button></header>
+<article class="card"><div class="top"><strong>任务结果</strong><span class="badge fail">失败：未能确认目标界面</span></div><div class="meta"><span>检查时间：2026-11-15 23:50</span><span>设备：Android 16</span><span>视觉模型配置：4/4 项检查通过</span></div>
+<div class="reason"><b>失败原因</b><br>应用启动后仍在游戏加载画面，目标主菜单尚未出现，模型无法确认声音图标，因而未执行点击。</div>
+<p>处理方向：先等待主菜单画面确认，再进行声音图标定位。执行端现已加入最长 4 分钟的视觉等待、重规划次数限制和实时进度日志；修正后的端到端运行尚待复测。</p>
+<img class="evidence" src="assets/game-loading.png" alt="任务结束时保存的游戏加载画面"><div class="muted">任务结束截图：仍处于启动动画，说明此前未等到主菜单。</div>
+<div class="log" id="log">任务：主菜单声音设置视觉验收
+状态：失败
+失败步骤：1
+日志摘要：应用已启动，但加载画面未切换到主菜单；视觉模型未识别到声音图标，任务停止。当前主菜单等待与实时日志修正尚待复测。</div>
+</article>
+<div class="footer">只读测试结果页。页面不连接本机服务、不请求 API，上传本目录即可查看；API Key 和设备序列号未包含在页面中。</div>
+</main><script>function copyLog(){navigator.clipboard.writeText(document.getElementById('log').innerText).then(()=>alert('日志已复制')).catch(()=>{let x=document.createElement('textarea');x.value=document.getElementById('log').innerText;document.body.appendChild(x);x.select();document.execCommand('copy');x.remove();alert('日志已复制')})}</script></body></html>
