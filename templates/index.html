@@ -5,22 +5,60 @@
 :root{font-family:Segoe UI,"Microsoft YaHei",sans-serif;color:#182230;background:#f3f6fa}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1120px;margin:28px auto;padding:0 18px}.head{display:flex;align-items:center;justify-content:space-between}.head h1{font-size:26px;margin:0}.sub{color:#617084;margin:8px 0 22px}.grid{display:grid;grid-template-columns:360px 1fr;gap:18px}.card{background:white;border:1px solid #e2e8f0;border-radius:12px;padding:18px;box-shadow:0 3px 12px #16263a0a}.card h2{font-size:17px;margin:0 0 14px}.label{display:block;font-size:13px;font-weight:600;margin:12px 0 6px}input,select,textarea{width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:10px;font:inherit;background:#fff}textarea{min-height:74px;resize:vertical}.row{display:flex;gap:8px}.row>*{flex:1}button{background:#1769e0;border:0;color:white;padding:10px 14px;border-radius:7px;font:inherit;font-weight:600;cursor:pointer}button.secondary{background:#e8eff9;color:#164990}button:disabled{opacity:.5;cursor:wait}.device{background:#f7fafc;border-radius:8px;padding:11px;margin:8px 0;font-size:13px}.ok{color:#087443}.bad{color:#b42318}.hint{font-size:12px;color:#667085;line-height:1.5}.tasks{display:grid;gap:12px}.task{border:1px solid #e2e8f0;border-radius:9px;padding:13px}.tasktop{display:flex;justify-content:space-between;align-items:center;gap:8px}.pill{font-size:12px;padding:4px 8px;border-radius:99px;background:#eef2f7}.pill.success{background:#e5f7ed;color:#087443}.pill.failed{background:#fff0ed;color:#a12613}.log{background:#111827;color:#d1e5ff;border-radius:7px;padding:10px;font:12px Consolas,monospace;max-height:165px;overflow:auto;white-space:pre-wrap;margin-top:10px}.shots{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.shots img{width:210px;max-width:48%;border:1px solid #cbd5e1;border-radius:6px}.small{font-size:12px;color:#667085;margin-top:7px}.banner{margin:12px 0;padding:10px;background:#fff8e8;border:1px solid #f4d28a;border-radius:8px;font-size:13px;line-height:1.5}@media(max-width:800px){.grid{grid-template-columns:1fr}}
 </style></head><body><main class="wrap">
 <div class="head"><h1>Android 游戏自动化实操</h1><button class="secondary" onclick="loadDevices()">刷新设备</button></div>
-<p class="sub">ADB 设备识别 · 可复现任务 · 逐步日志 · 截图结果</p>
+<p class="sub">每 5 秒刷新设备 · 明确选机并锁定序列号 · 操作前后截图 · 人工复核留档</p>
 <div class="grid"><section class="card"><h2>设备</h2><div id="devices">正在查询…</div>
+<h2 style="margin-top:22px">所选设备 · 最近一步画面</h2><div id="selected-preview" class="hint">请选择设备。这里展示运行截图，不是实时视频。</div>
 <h2 style="margin-top:22px">新建测试任务</h2>
 <label class="label" for="name">任务名称</label><input id="name" placeholder="给本次测试取个名字">
 <label class="label">目标应用包名</label><input id="package" value="com.tencent.tmgp.sgame">
-<label class="label">执行设备</label><select id="serial"><option value="">自动选择首台已授权设备</option></select>
+<label class="label">执行设备</label><select id="serial"><option value="">请选择执行设备（不会自动选机）</option></select>
 <label class="label" for="goal" id="goal-label">自然语言测试步骤</label>
 <textarea id="goal" rows="7" placeholder="用自然语言描述要执行的操作。可写一段话，也可每行写一个步骤。"></textarea>
 <label class="label" for="assertion">附加验收条件（可选）</label><textarea id="assertion"></textarea>
-<p class="hint">每个阶段完成后保存截图。遇到登录授权、验证码或识别失败时停止，可从日志查看失败阶段和现场截图。</p>
+<p class="hint">每次设备操作前后保存截图，并在每个自然语言阶段结束后留档。任务结束后可逐图标记通过或发现问题。遇到登录授权、验证码或识别失败时停止，可从日志查看失败阶段和现场截图。</p>
 <div class="row"><button onclick="createTask(this)">创建并运行视觉任务</button><button class="secondary" onclick="createTask(this, true)">创建失败演示</button></div>
 <p class="hint">失败演示验证错误记录，无需操作手机。</p></section>
 <section class="card"><h2>任务与执行结果</h2><div id="tasks" class="tasks">暂无任务</div></section></div>
 </main><script>
 let deviceList=[];
-async function loadDevices(){let box=document.querySelector('#devices');box.textContent='正在查询…';try{let r=await fetch('/api/devices'),d=await r.json();deviceList=d.devices||[];box.innerHTML='';let sel=document.querySelector('#serial');sel.innerHTML='<option value="">自动选择首台已授权设备</option>';if(!deviceList.length)box.innerHTML='<div class="device bad">没有发现设备，请检查 USB 调试和授权。</div>';for(const x of deviceList){let el=document.createElement('div');el.className='device';el.innerHTML='<b>'+x.serial+'</b> · <span class="'+(x.state==='device'?'ok':'bad')+'">'+x.state+'</span><br>'+((x.resolution&&x.resolution.raw)||x.details||'');box.appendChild(el);if(x.state==='device'){let o=document.createElement('option');o.value=x.serial;o.textContent=x.serial;sel.appendChild(o)}}if(!d.ok)box.innerHTML='<div class="device bad">'+d.error+'</div>'}catch(e){box.innerHTML='<div class="device bad">无法连接本地服务：'+e+'</div>'}}
+let latestTasks=[];
+function renderPreview(){
+  const serial=document.querySelector('#serial').value;
+  const root=document.querySelector('#selected-preview');root.textContent='';
+  const tasks=latestTasks.filter(t=>(t.bound_serial||t.serial)===serial).sort((a,b)=>(b.started_at||b.created_at||'').localeCompare(a.started_at||a.created_at||''));
+  const task=tasks.find(t=>t.screenshots?.length);
+  if(!serial||!task){root.textContent=serial?'等待该设备的执行截图（非实时投屏）':'请选择设备。这里展示运行截图，不是实时视频。';return;}
+  const shot=task.screenshots[task.screenshots.length-1];
+  const link=document.createElement('a');link.href='/'+shot.path;link.target='_blank';link.rel='noopener';
+  const image=document.createElement('img');image.src=link.href;image.alt=shot.label;image.style.cssText='width:100%;max-height:300px;object-fit:contain;border-radius:8px';link.appendChild(image);root.appendChild(link);
+  const detail=document.createElement('div');detail.textContent=serial+' · '+shot.label+' · '+(shot.captured_at||'');root.appendChild(detail);
+}
+document.querySelector('#serial').addEventListener('change',renderPreview);
+let loadingDevices = false;
+async function loadDevices(){
+  if (loadingDevices) return;
+  loadingDevices = true;
+  const box=document.querySelector('#devices'),sel=document.querySelector('#serial');
+  const selected=sel.value;
+  try {
+    const r=await fetch('/api/devices'),d=await r.json();
+    if(!r.ok||!d.ok)throw Error(d.error||'设备查询失败');
+    deviceList=d.devices||[];
+    box.textContent='';
+    sel.innerHTML='<option value="">请选择执行设备（不会自动选机）</option>';
+    for(const x of deviceList){
+      const el=document.createElement('div');el.className='device';
+      const title=document.createElement('b');title.textContent=x.serial;el.appendChild(title);
+      const detail=document.createElement('div');detail.textContent=x.state+' · '+(x.details||'');
+      detail.className=x.state==='device'?'ok':'bad';el.appendChild(detail);box.appendChild(el);
+      if(x.state==='device'){const o=document.createElement('option');o.value=x.serial;o.textContent=x.serial+' · '+(x.details||'已授权');sel.appendChild(o)}
+    }
+    if(!deviceList.length)box.textContent='没有发现设备，请检查 USB 调试和授权。';
+    sel.value=deviceList.some(x=>x.state==='device'&&x.serial===selected)?selected:'';
+    if(selected&&!sel.value){const el=document.createElement('p');el.className='bad';el.textContent='原选设备已断开或未授权，请重新选择；不会切换到其他设备。';box.appendChild(el)}
+  } catch(e){box.textContent='设备查询失败：'+e.message;sel.value='';}
+  finally{loadingDevices=false;renderPreview();}
+}
 async function createTask(button, fail = false) {
   const value = id => document.getElementById(id).value.trim();
   const body = {
@@ -31,6 +69,7 @@ async function createTask(button, fail = false) {
       {type: 'vision', goal: value('goal'), assertion: value('assertion')}
     ],
   };
+  if (!body.serial) { alert('请先选择已授权的执行设备'); return; }
   button.disabled = true;
   try {
     const response = await fetch('/api/tasks', {
@@ -57,6 +96,7 @@ function logText(task) {
     '任务 ID：' + task.id,
     '运行 ID：' + (task.run_id || '无'),
     '应用包名：' + task.package,
+    '绑定设备：' + (task.bound_serial || task.serial || '未选择'),
     '状态：' + (statusNames[task.status] || '待运行'),
     '开始：' + (task.started_at || '未开始'),
     '结束：' + (task.finished_at || '未结束'),
@@ -64,7 +104,7 @@ function logText(task) {
     '错误：' + (task.error || '无'),
     '结果：' + (task.result || '无'),
     '', '执行日志：', ...(task.logs || []).map(logLine),
-    '', '截图路径（相对于项目目录）：', ...(task.screenshots || []).map(shot => shot.path),
+    '', '截图路径（相对于项目目录）：', ...(task.screenshots || []).map(shot => shot.path + ' | ' + (shot.review || 'pending') + ' | ' + (shot.review_note || '')),
   ].join('\r\n');
 }
 
@@ -100,7 +140,9 @@ function append(parent, tag, content, className) {
 
 async function refreshTasks() {
   const response = await fetch('/api/tasks');
+  if(!response.ok)throw Error('任务查询失败');
   const items = await response.json();
+  latestTasks=items;renderPreview();
   const root = document.querySelector('#tasks');
   root.textContent = items.length ? '' : '暂无任务';
   for (const task of items) {
@@ -108,7 +150,7 @@ async function refreshTasks() {
     const header = append(card, 'div', '', 'tasktop');
     append(header, 'strong', task.name);
     append(header, 'span', statusNames[task.status] || '待运行', 'pill ' + task.status);
-    append(card, 'div', '包名：' + task.package + ' · ' + (task.started_at || task.created_at || ''), 'small');
+    append(card, 'div', '设备：' + (task.bound_serial || task.serial || '未选择') + ' · 包名：' + task.package + ' · ' + (task.started_at || task.created_at || ''), 'small');
     if (task.error) append(card, 'p', '失败步骤 ' + stepName(task.failure_step) + '：' + task.error, 'bad');
     if (task.result) append(card, 'p', task.result);
     const logActions = append(card, 'div', '', 'tasktop');
@@ -117,6 +159,8 @@ async function refreshTasks() {
     append(logActions, 'button', '一键复制', 'secondary').onclick = () => copyLogs(task);
     append(logActions, 'button', '导出日志', 'secondary').onclick = () => exportLogs(task);
     append(card, 'div', (task.logs || []).map(logLine).join('\n') || '等待执行…', 'log');
+    const reviewed = (task.screenshots || []).filter(s => s.review === 'passed' || s.review === 'issue').length;
+    append(card, 'div', '人工复核：' + reviewed + '/' + (task.screenshots || []).length + ' 张；模型成功不代表人工验收通过。', 'small');
     const shots = append(card, 'div', '', 'shots');
     for (const shot of task.screenshots || []) {
       const item = append(shots, 'div', '');
@@ -127,9 +171,27 @@ async function refreshTasks() {
       const image = append(link, 'img', '');
       image.src = link.href;
       image.alt = shot.label;
-      append(item, 'div', shot.label, 'small');
+      const phaseNames = {before:'操作前',after:'操作后',failed:'操作失败'};
+      append(item, 'div', (shot.action ? ('阶段 '+shot.stage+' · 操作 '+shot.action_index+' · '+shot.action+' · '+(phaseNames[shot.phase]||shot.phase)) : shot.label), 'small');
+      append(item, 'div', (shot.captured_at||'') + ' · ' + (shot.serial||task.serial||''), 'small');
+      const names = {pending:'待复核',passed:'人工确认通过',issue:'发现问题'};
+      append(item, 'div', names[shot.review||'pending'] + (shot.review_note ? '：'+shot.review_note : ''), shot.review==='issue'?'bad':'small');
+      if(task.status==='success'||task.status==='failed'){
+        const controls=append(item,'div','','row');
+        append(controls,'button','通过','secondary').onclick=()=>reviewShot(task,shot,'passed');
+        append(controls,'button','发现问题','secondary').onclick=()=>reviewShot(task,shot,'issue');
+        append(controls,'button','重置','secondary').onclick=()=>reviewShot(task,shot,'pending');
+      }
     }
   }
 }
-loadDevices();refreshTasks();setInterval(refreshTasks,3000);
+async function reviewShot(task,shot,decision){
+  const note=decision==='pending'?'':prompt(decision==='issue'?'请记录发现的问题：':'复核备注（可留空）：',shot.review_note||'');
+  if(note===null)return;
+  try{
+    const r=await fetch('/api/tasks/'+task.id+'/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:shot.path,decision,note})});
+    const d=await r.json();if(!r.ok)throw Error(d.error||'保存复核失败');await refreshTasks();
+  }catch(e){alert(e.message)}
+}
+loadDevices();refreshTasks().catch(console.error);setInterval(()=>refreshTasks().catch(console.error),3000);setInterval(loadDevices,5000);
 </script></body></html>

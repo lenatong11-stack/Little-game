@@ -63,12 +63,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/devices":
             try:
                 found = ADBClient.devices()
-                for device in found:
-                    if device["state"] == "device":
-                        try:
-                            device["resolution"] = ADBClient(device["serial"]).resolution()
-                        except ADBError as exc:
-                            device["resolution_error"] = str(exc)
                 return self.send_json({"ok": True, "devices": found})
             except ADBError as exc:
                 return self.send_json({"ok": False, "error": str(exc), "devices": []}, 503)
@@ -106,12 +100,48 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send_json({"error": "请填写 1 至 20 行自然语言步骤"}, 400)
                     if not isinstance(step.get("assertion", ""), str):
                         return self.send_json({"error": "验收条件必须是文本"}, 400)
+            serial = data.get("serial")
+            if not isinstance(serial, str) or not serial.strip():
+                return self.send_json({"error": "请选择明确的执行设备"}, 400)
+            try:
+                ready = {d["serial"] for d in ADBClient.devices() if d["state"] == "device"}
+            except ADBError as exc:
+                return self.send_json({"error": str(exc)}, 503)
+            if serial not in ready:
+                return self.send_json({"error": "所选设备未连接或未授权"}, 409)
             task = {"id": uuid.uuid4().hex[:10], "name": name, "package": package,
                     "serial": data.get("serial") or "", "steps": steps, "status": "queued",
                     "logs": [], "screenshots": [],
                     "created_at": datetime.now().isoformat(timespec="seconds")}
             save_task(task)
             return self.send_json(task, 201)
+        if path.startswith("/api/tasks/") and path.endswith("/review"):
+            task_id = path.split("/")[-2]
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 10000:
+                    return self.send_json({"error": "复核内容过长"}, 400)
+                review = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(review, dict) or review.get("decision") not in ("pending", "passed", "issue"):
+                    return self.send_json({"error": "复核状态不正确"}, 400)
+                if not isinstance(review.get("note", ""), str):
+                    return self.send_json({"error": "备注必须是文本"}, 400)
+            except (ValueError, UnicodeError):
+                return self.send_json({"error": "复核内容格式不正确"}, 400)
+            with state_lock:
+                items = read_tasks()
+                task = next((x for x in items if x.get("id") == task_id), None)
+                if not task:
+                    return self.send_json({"error": "任务不存在"}, 404)
+                if task.get("status") not in ("success", "failed"):
+                    return self.send_json({"error": "请在任务结束后复核，避免覆盖正在写入的记录"}, 409)
+                shot = next((s for s in task.get("screenshots", []) if s["path"] == review.get("path")), None)
+                if not shot:
+                    return self.send_json({"error": "截图不存在"}, 404)
+                shot.update(review=review["decision"], review_note=review.get("note", "")[:2000],
+                            reviewed_at=datetime.now().isoformat(timespec="seconds"))
+                save_tasks(items)
+            return self.send_json({"ok": True})
         if path.startswith("/api/tasks/") and path.endswith("/run"):
             task_id = path.split("/")[-2]
             task = next((x for x in read_tasks() if x.get("id") == task_id), None)

@@ -1,0 +1,7 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {withEvidence} from '../midscene/action_evidence.mjs';
+test('captures before and after, preserves context and return value',async()=>{const events=[];const action={name:'Tap',marker:7,async call(param){events.push('tap');return this.marker+param}};const [wrapped]=withEvidence([action],async(label,fields)=>events.push([label,fields]),()=>2);assert.equal(await wrapped.call(3),10);assert.equal(events[0][0],'action-0001-before');assert.equal(events[1],'tap');assert.equal(events[2][0],'action-0001-after');assert.equal(events[2][1].stage,2)});
+test('does not act when required pre-operation screenshot fails',async()=>{let called=false;const [action]=withEvidence([{name:'Tap',call(){called=true}}],async()=>{throw Error('device disconnected')},()=>1);await assert.rejects(action.call(),/disconnected/);assert.equal(called,false)});
+test('captures failed action without swallowing error',async()=>{const events=[];const [action]=withEvidence([{name:'Swipe',call(){throw Error('swipe failed')}}],async(label)=>events.push(label),()=>1);await assert.rejects(action.call(),/swipe failed/);assert.deepEqual(events,['action-0001-before','action-0001-failed'])});
+test('post-operation screenshot failure stops the run',async()=>{let count=0;const [action]=withEvidence([{name:'Tap',call(){}}],async()=>{if(++count===2)throw Error('capture failed')},()=>1);await assert.rejects(action.call(),/capture failed/)});

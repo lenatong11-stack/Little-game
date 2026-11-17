@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { agentFromAdbDevice } from '@midscene/android';
+import { AndroidDevice, AndroidAgent } from '@midscene/android';
+import { withEvidence } from './action_evidence.mjs';
 import { execFile } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -18,8 +19,10 @@ const context = [
 
 let input;
 let agent;
+let device;
+let currentStage = 0;
 
-async function capture(label) {
+async function capture(label, metadata = {}) {
   const file = label + '.png';
   const { stdout } = await execAdb(input.adb, [
     '-s', input.serial, 'exec-out', 'screencap', '-p',
@@ -28,17 +31,22 @@ async function capture(label) {
     throw new Error('设备没有返回有效的 PNG 截图');
   }
   await writeFile(join(input.folder, file), stdout);
-  emit('screenshot', '已保存截图：' + file, { file });
+  emit('screenshot', '已保存截图：' + file, { file, label: metadata.action ? `${metadata.action} · ${metadata.phase}` : label, captured_at: new Date().toISOString(), ...metadata });
 }
 
 try {
   let raw = '';
   for await (const chunk of process.stdin) raw += chunk;
   input = JSON.parse(raw);
+  if (typeof input.serial !== 'string' || !input.serial.trim()) throw new Error('必须明确指定设备，禁止自动选机');
   const steps = input.goal.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   if (!steps.length || steps.length > 20) throw new Error('请填写 1 至 20 行自然语言步骤');
   if (!process.env.MIDSCENE_MODEL_API_KEY) throw new Error('请先在 midscene/.env 配置视觉模型');
-  agent = await agentFromAdbDevice(input.serial, {
+  device = new AndroidDevice(input.serial, {});
+  await device.connect();
+  const originalActions = device.actionSpace.bind(device);
+  device.actionSpace = () => withEvidence(originalActions(), capture, () => currentStage);
+  agent = new AndroidAgent(device, {
     replanningCycleLimit: 15,
     aiContexts: { aiAct: context },
     onTaskStartTip: tip => emit('progress', String(tip)),
@@ -54,12 +62,14 @@ try {
 
   for (const [index, step] of steps.entries()) {
     const stage = index + 1;
+    currentStage = stage;
     emit('stage', '第 ' + stage + ' 步：' + step, { stage });
     await agent.aiAct(step, { cacheable: false });
     await capture('stage-' + stage);
   }
   if (input.assertion?.trim()) {
     const stage = steps.length + 1;
+    currentStage = stage;
     emit('stage', '检查最终结果：' + input.assertion, { stage });
     await agent.aiWaitFor(input.assertion, { timeoutMs: 180000, checkIntervalMs: 6000 });
     await capture('stage-' + stage);
@@ -76,4 +86,5 @@ try {
   process.exitCode = 1;
 } finally {
   if (agent) await agent.destroy().catch(() => {});
+  else if (device) await device.destroy().catch(() => {});
 }

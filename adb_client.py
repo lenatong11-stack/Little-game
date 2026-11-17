@@ -16,9 +16,9 @@ class ADBClient:
         self.serial = serial
 
     def run(self, *args, timeout=20):
-        command = [ADB]
-        if self.serial:
-            command += ["-s", self.serial]
+        if not self.serial:
+            raise ADBError("必须明确指定执行设备序列号，禁止自动选择设备")
+        command = [ADB, "-s", self.serial]
         command += list(args)
         try:
             p = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -32,9 +32,12 @@ class ADBClient:
 
     @staticmethod
     def devices():
-        p = subprocess.run([ADB, "devices", "-l"], stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE, universal_newlines=True,
-                           encoding="utf-8", errors="replace")
+        try:
+            p = subprocess.run([ADB, "devices", "-l"], stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, universal_newlines=True,
+                               encoding="utf-8", errors="replace", timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ADBError("无法查询设备：{}".format(exc))
         if p.returncode:
             raise ADBError(p.stderr.strip() or "无法启动 ADB")
         result = []
